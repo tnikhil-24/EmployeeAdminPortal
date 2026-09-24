@@ -1,35 +1,26 @@
-﻿using EmployeeAdminPortal.Data;
+﻿using EmployeeAdminPortal.Exceptions;
 using EmployeeAdminPortal.Models;
-using EmployeeAdminPortal.Models.Entities;
+using EmployeeAdminPortal.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace EmployeeAdminPortal.Controllers
 {
-    //localhost:xxxx/api/employees
     [Route("api/[controller]")]
     [ApiController]
     public class EmployeesController : ControllerBase
     {
-        private readonly ApplicationDbContext dbContext;
+        private readonly IEmployeeService employeeService;
 
-        public EmployeesController(ApplicationDbContext dbContext)
+        public EmployeesController(IEmployeeService employeeService)
         {
-            this.dbContext = dbContext;
+            this.employeeService = employeeService;
         }
 
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<EmployeeResponseDto>>> GetAllEmployees()
         {
-            var employees = await dbContext.Employees
-                .AsNoTracking()
-                .OrderBy(e => e.Name)
-                .Select(e => new EmployeeResponseDto(e.Id, e.Name, e.Email, e.Phone, e.Salary))
-                .ToListAsync();
-
-            return Ok(employees);
-
+            return Ok(await employeeService.GetAllAsync());
         }
 
         [HttpGet("{id:guid}")]
@@ -37,94 +28,70 @@ namespace EmployeeAdminPortal.Controllers
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<EmployeeResponseDto>> GetEmployeeById(Guid id)
         {
-            var employee = await dbContext.Employees.FindAsync(id);
+            var employee = await employeeService.GetByIdAsync(id);
 
             if (employee is null)
             {
                 return NotFound();
             }
 
-            return Ok(ToDto(employee));
+            return Ok(employee);
         }
 
         [HttpPost]
-        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<ActionResult<EmployeeResponseDto>> AddEmployee(AddEmployeeDto addEmployeeDto)
         {
-            if (await dbContext.Employees.AnyAsync(e => e.Email == addEmployeeDto.Email))
+            try
             {
-                return Problem(
-                    title: "Email already in use",
-                    detail: $"An employee with email '{addEmployeeDto.Email}' already exists.",
+                var created = await employeeService.CreateAsync(addEmployeeDto);
+                return CreatedAtAction(nameof(GetEmployeeById), new { id = created.Id }, created);
+            }
+            catch (DuplicateEmailException ex)
+            {
+                return Problem(title: "Email already in use", detail: ex.Message,
                     statusCode: StatusCodes.Status409Conflict);
             }
-            var employee = new Employee()
-            {
-                Name = addEmployeeDto.Name,
-                Email = addEmployeeDto.Email,
-                Phone = addEmployeeDto.Phone,
-                Salary = addEmployeeDto.Salary
-            };
-
-            dbContext.Employees.Add(employee);
-            await dbContext.SaveChangesAsync();
-
-            return CreatedAtAction(nameof(GetEmployeeById), new { id = employee.Id }, ToDto(employee));
         }
 
         [HttpPut("{id:guid}")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<ActionResult<EmployeeResponseDto>> UpdateEmployee(Guid id, UpdateEmployeeDto updateEmployeeDto)
         {
-            var employee = await dbContext.Employees.FindAsync(id);
-
-            if(employee is null)
+            try
             {
-                return NotFound();
+                var updated = await employeeService.UpdateAsync(id, updateEmployeeDto);
+
+                if (updated is null)
+                {
+                    return NotFound();
+                }
+
+                return Ok(updated);
             }
-
-            if (await dbContext.Employees.AnyAsync(e => e.Email == updateEmployeeDto.Email && e.Id != id))
+            catch (DuplicateEmailException ex)
             {
-                return Problem(
-                    title: "Email already in use",
-                    detail: $"An employee with email '{updateEmployeeDto.Email}' already exists.",
+                return Problem(title: "Email already in use", detail: ex.Message,
                     statusCode: StatusCodes.Status409Conflict);
             }
-
-            employee.Name = updateEmployeeDto.Name;
-            employee.Email = updateEmployeeDto.Email;
-            employee.Phone = updateEmployeeDto.Phone;
-            employee.Salary = updateEmployeeDto.Salary;
-
-            await dbContext.SaveChangesAsync();
-
-            return Ok(ToDto(employee));
         }
 
         [HttpDelete("{id:guid}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<ActionResult> DeleteEmployee(Guid id) 
+        public async Task<IActionResult> DeleteEmployee(Guid id)
         {
-
-            var employee = await dbContext.Employees.FindAsync(id);
-
-            if (employee is null)
+            if (!await employeeService.DeleteAsync(id))
             {
                 return NotFound();
             }
 
-            dbContext.Employees.Remove(employee);
-            await dbContext.SaveChangesAsync();
-
             return NoContent();
         }
-        private static EmployeeResponseDto ToDto(Employee e) =>
-            new(e.Id, e.Name, e.Email, e.Phone, e.Salary);
     }
 }

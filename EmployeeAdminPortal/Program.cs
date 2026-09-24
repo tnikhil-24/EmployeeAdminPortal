@@ -1,5 +1,7 @@
 using EmployeeAdminPortal.Data;
 using Microsoft.EntityFrameworkCore;
+using EmployeeAdminPortal.Services;
+using EmployeeAdminPortal.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +13,10 @@ builder.Services.AddOpenApi();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
 options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
+builder.Services.AddScoped<IEmployeeService, EmployeeService>();
+
 
 var app = builder.Build();
 
