@@ -1,9 +1,8 @@
 ﻿using EmployeeAdminPortal.Data;
 using EmployeeAdminPortal.Models;
 using EmployeeAdminPortal.Models.Entities;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using System.ComponentModel.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
 
 namespace EmployeeAdminPortal.Controllers
 {
@@ -20,32 +19,48 @@ namespace EmployeeAdminPortal.Controllers
         }
 
         [HttpGet]
-        public IActionResult GetAllEmployees()
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<ActionResult<IEnumerable<EmployeeResponseDto>>> GetAllEmployees()
         {
-            //var allEmployees = dbContext.Employees.ToList();
+            var employees = await dbContext.Employees
+                .AsNoTracking()
+                .OrderBy(e => e.Name)
+                .Select(e => new EmployeeResponseDto(e.Id, e.Name, e.Email, e.Phone, e.Salary))
+                .ToListAsync();
 
-            //return Ok(allEmployees);
+            return Ok(employees);
 
-            return Ok(dbContext.Employees.ToList());
         }
 
-        [HttpGet]
-        [Route("{id:guid}")]
-        public IActionResult GetEmployeeById(Guid id) {
-            var employee = dbContext.Employees.Find(id);
+        [HttpGet("{id:guid}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<EmployeeResponseDto>> GetEmployeeById(Guid id)
+        {
+            var employee = await dbContext.Employees.FindAsync(id);
 
             if (employee is null)
             {
                 return NotFound();
             }
 
-            return Ok(employee);
+            return Ok(ToDto(employee));
         }
 
         [HttpPost]
-        public IActionResult AddEmployee(AddEmployeeDto addEmployeeDto)
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<EmployeeResponseDto>> AddEmployee(AddEmployeeDto addEmployeeDto)
         {
-            var employeeEntity = new Employee()
+            if (await dbContext.Employees.AnyAsync(e => e.Email == addEmployeeDto.Email))
+            {
+                return Problem(
+                    title: "Email already in use",
+                    detail: $"An employee with email '{addEmployeeDto.Email}' already exists.",
+                    statusCode: StatusCodes.Status409Conflict);
+            }
+            var employee = new Employee()
             {
                 Name = addEmployeeDto.Name,
                 Email = addEmployeeDto.Email,
@@ -53,21 +68,32 @@ namespace EmployeeAdminPortal.Controllers
                 Salary = addEmployeeDto.Salary
             };
 
-            dbContext.Employees.Add(employeeEntity);
-            dbContext.SaveChanges();
+            dbContext.Employees.Add(employee);
+            await dbContext.SaveChangesAsync();
 
-            return Ok(employeeEntity);
+            return CreatedAtAction(nameof(GetEmployeeById), new { id = employee.Id }, ToDto(employee));
         }
 
-        [HttpPut]
-        [Route("{id:guid}")]
-        public IActionResult UpdateEmployee(Guid id, UpdateEmployeeDto updateEmployeeDto)
+        [HttpPut("{id:guid}")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<EmployeeResponseDto>> UpdateEmployee(Guid id, UpdateEmployeeDto updateEmployeeDto)
         {
-            var employee = dbContext.Employees.Find(id);
+            var employee = await dbContext.Employees.FindAsync(id);
 
             if(employee is null)
             {
                 return NotFound();
+            }
+
+            if (await dbContext.Employees.AnyAsync(e => e.Email == updateEmployeeDto.Email && e.Id != id))
+            {
+                return Problem(
+                    title: "Email already in use",
+                    detail: $"An employee with email '{updateEmployeeDto.Email}' already exists.",
+                    statusCode: StatusCodes.Status409Conflict);
             }
 
             employee.Name = updateEmployeeDto.Name;
@@ -75,16 +101,18 @@ namespace EmployeeAdminPortal.Controllers
             employee.Phone = updateEmployeeDto.Phone;
             employee.Salary = updateEmployeeDto.Salary;
 
-            dbContext.SaveChanges();
+            await dbContext.SaveChangesAsync();
 
-            return Ok(employee);
+            return Ok(ToDto(employee));
         }
 
-        [HttpDelete]
-        [Route("{id:guid}")]
-        public IActionResult DeleteEmployee(Guid id) 
+        [HttpDelete("{id:guid}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult> DeleteEmployee(Guid id) 
         {
-            var employee = dbContext.Employees.Find(id);
+
+            var employee = await dbContext.Employees.FindAsync(id);
 
             if (employee is null)
             {
@@ -92,9 +120,11 @@ namespace EmployeeAdminPortal.Controllers
             }
 
             dbContext.Employees.Remove(employee);
-            dbContext.SaveChanges();
+            await dbContext.SaveChangesAsync();
 
-            return Ok();
+            return NoContent();
         }
+        private static EmployeeResponseDto ToDto(Employee e) =>
+            new(e.Id, e.Name, e.Email, e.Phone, e.Salary);
     }
 }
