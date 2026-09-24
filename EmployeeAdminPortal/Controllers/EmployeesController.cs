@@ -1,5 +1,4 @@
-﻿using EmployeeAdminPortal.Exceptions;
-using EmployeeAdminPortal.Models;
+﻿using EmployeeAdminPortal.Models;
 using EmployeeAdminPortal.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -44,16 +43,8 @@ namespace EmployeeAdminPortal.Controllers
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<ActionResult<EmployeeResponseDto>> AddEmployee(AddEmployeeDto addEmployeeDto)
         {
-            try
-            {
-                var created = await employeeService.CreateAsync(addEmployeeDto);
-                return CreatedAtAction(nameof(GetEmployeeById), new { id = created.Id }, created);
-            }
-            catch (DuplicateEmailException ex)
-            {
-                return Problem(title: "Email already in use", detail: ex.Message,
-                    statusCode: StatusCodes.Status409Conflict);
-            }
+            var created = await employeeService.CreateAsync(addEmployeeDto);
+            return CreatedAtAction(nameof(GetEmployeeById), new { id = created.Id }, created);
         }
 
         [HttpPut("{id:guid}")]
@@ -63,22 +54,14 @@ namespace EmployeeAdminPortal.Controllers
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<ActionResult<EmployeeResponseDto>> UpdateEmployee(Guid id, UpdateEmployeeDto updateEmployeeDto)
         {
-            try
-            {
-                var updated = await employeeService.UpdateAsync(id, updateEmployeeDto);
+            var updated = await employeeService.UpdateAsync(id, updateEmployeeDto);
 
-                if (updated is null)
-                {
-                    return NotFound();
-                }
-
-                return Ok(updated);
-            }
-            catch (DuplicateEmailException ex)
+            if (updated is null)
             {
-                return Problem(title: "Email already in use", detail: ex.Message,
-                    statusCode: StatusCodes.Status409Conflict);
+                return NotFound();
             }
+
+            return Ok(updated);
         }
 
         [HttpDelete("{id:guid}")]

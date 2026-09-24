@@ -1,7 +1,8 @@
 using EmployeeAdminPortal.Data;
-using Microsoft.EntityFrameworkCore;
-using EmployeeAdminPortal.Services;
+using EmployeeAdminPortal.Middleware;
 using EmployeeAdminPortal.Repositories;
+using EmployeeAdminPortal.Services;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,8 +18,12 @@ options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnectio
 builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
